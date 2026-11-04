@@ -178,7 +178,7 @@ class OrdersApiIT {
                 """.formatted(ADA, KEYBOARD);
 
         HttpResponse<String> created = post("/api/orders", body, "it-transition-0001");
-        assertThat(created.statusCode()).as("creating the order for the transition test returned: %s", created.body()).isEqualTo(201);
+        assertThat(created.statusCode() + " " + created.body()).isEqualTo("201");
         String id = mapper.readTree(created.body()).get("id").asText();
 
         HttpResponse<String> response = post("/api/orders/" + id + "/status?status=SHIPPED", "", null);

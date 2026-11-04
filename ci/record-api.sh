@@ -11,49 +11,53 @@ COMMIT="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo local)}"
 STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 KEY_SUFFIX="$(date -u +%Y%m%dT%H%M%SZ)"
 
+# One JSON object per line, assembled at the end. Every value is passed to jq with --arg,
+# so nothing jq receives is a pre-parsed document: an earlier version round-tripped the
+# accumulated array through a file and passed it back as --argjson, which aborts the whole
+# run ("invalid JSON text passed to --argjson") on a trailing carriage return or on the
+# "000" that curl reports when a connection never happened.
 TMP="$(mktemp)"
-echo '[]' >"$TMP"
+: >"$TMP"
 
 record() { # record <label> <method> <path> [body] [extra-header]
   local label="$1" method="$2" path="$3" body="${4:-}" extra="${5:-}"
-  local response http_code start end duration
+  local body_file http_code start end duration response
 
-  local args=(-sS -X "$method" "$BASE_URL$path" -H 'Accept: application/json')
-  # Plain `if`s, not `[ -n ... ] && ...`: under `set -e` a false test is a failing command
-  # and aborts the script, which is exactly what happened to the first bodiless GET.
+  local args=(-sS -X "$method" "$BASE_URL$path" -H 'Accept: application/json' -H 'Content-Type: application/json')
   if [ -n "$body" ]; then
-    args+=(-H 'Content-Type: application/json' --data-binary "$body")
+    args+=(--data-binary "$body")
   fi
   if [ -n "$extra" ]; then
     args+=(-H "$extra")
   fi
 
+  # Body and status are captured separately: reading the status out of curl's combined
+  # output by line assumes the body ends with a newline.
+  body_file="$(mktemp)"
   start=$(date +%s%3N)
-  response="$(curl "${args[@]}" -w $'\n%{http_code}')"
+  http_code="$(curl "${args[@]}" -o "$body_file" -w '%{http_code}' || true)"
   end=$(date +%s%3N)
   duration=$((end - start))
+  response="$(cat "$body_file")"
+  rm -f "$body_file"
 
-  http_code="$(printf '%s' "$response" | tail -n1)"
-  response="$(printf '%s' "$response" | sed '$d')"
-
-  jq --argjson existing "$(cat "$TMP")" \
-     --arg label "$label" \
-     --arg method "$method" \
-     --arg path "$path" \
-     --arg body "$body" \
-     --argjson status "$http_code" \
-     --argjson durationMs "$duration" \
-     --arg response "$response" \
-     '$existing + [{
-        label: $label,
-        method: $method,
-        path: $path,
-        requestBody: (if $body == "" then null else ($body | fromjson?) end),
-        status: $status,
-        durationMs: $durationMs,
-        responseBody: ($response | fromjson?)
-      }]' >"$TMP.new"
-  mv "$TMP.new" "$TMP"
+  jq -nc \
+    --arg label "$label" \
+    --arg method "$method" \
+    --arg path "$path" \
+    --arg body "$body" \
+    --arg status "$http_code" \
+    --arg durationMs "$duration" \
+    --arg response "$response" \
+    '{
+       label: $label,
+       method: $method,
+       path: $path,
+       requestBody: (if $body == "" then null else ($body | fromjson?) end),
+       status: (($status | tonumber?) // 0),
+       durationMs: (($durationMs | tonumber?) // 0),
+       responseBody: ($response | fromjson?)
+     }' >>"$TMP"
 }
 
 echo "waiting for $BASE_URL/actuator/health ..."
@@ -90,8 +94,9 @@ jq -n \
   --arg commit "$COMMIT" \
   --arg recordedAt "$STAMP" \
   --arg baseUrl "$BASE_URL" \
-  --argjson requests "$(cat "$TMP")" \
-  '{commit: $commit, recordedAt: $recordedAt, recordedAgainst: $baseUrl, note: "Recorded from a CI run, not a live server.", requests: $requests}' \
+  --slurpfile requests "$TMP" \
+  '{commit: $commit, recordedAt: $recordedAt, recordedAgainst: $baseUrl,
+    note: "Recorded from a CI run, not a live server.", requests: $requests}' \
   >"$OUT"
 
 rm -f "$TMP"

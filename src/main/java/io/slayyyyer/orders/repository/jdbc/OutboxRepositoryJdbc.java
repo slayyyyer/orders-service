@@ -1,23 +1,31 @@
 package io.slayyyyer.orders.repository.jdbc;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.slayyyyer.orders.domain.Order;
 import io.slayyyyer.orders.repository.OutboxRepository;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 @Repository
 public class OutboxRepositoryJdbc implements OutboxRepository {
 
-    private final JdbcClient jdbc;
-    private final ObjectMapper objectMapper;
+    // Spring Boot 4 auto-configures a Jackson 3 mapper (tools.jackson). The Jackson 2
+    // ObjectMapper that this class used to inject only exists here as a transitive
+    // dependency of springdoc, so there was no bean of that type and the application
+    // context failed to start — invisible to unit tests, fatal in the integration run.
+    //
+    // The outbox serialises one flat map of primitives, so owning a mapper is simpler than
+    // injecting the application's JSON configuration, and it removes the wiring dependency
+    // entirely.
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
 
-    public OutboxRepositoryJdbc(JdbcClient jdbc, ObjectMapper objectMapper) {
+    private final JdbcClient jdbc;
+
+    public OutboxRepositoryJdbc(JdbcClient jdbc) {
         this.jdbc = jdbc;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -36,15 +44,7 @@ public class OutboxRepositoryJdbc implements OutboxRepository {
                 """)
                 .param("aggregateId", order.id())
                 .param("eventType", eventType)
-                .param("payload", toJson(payload))
+                .param("payload", JSON.writeValueAsString(payload))
                 .update();
-    }
-
-    private String toJson(Map<String, Object> payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("could not serialise outbox payload", e);
-        }
     }
 }

@@ -178,12 +178,13 @@ class OrdersApiIT {
                 """.formatted(ADA, KEYBOARD);
 
         HttpResponse<String> created = post("/api/orders", body, "it-transition-0001");
+        assertThat(created.statusCode()).as("creating the order for the transition test returned: %s", created.body()).isEqualTo(201);
         String id = mapper.readTree(created.body()).get("id").asText();
 
         HttpResponse<String> response = post("/api/orders/" + id + "/status?status=SHIPPED", "", null);
 
-        assertThat(response.statusCode()).isEqualTo(409);
-        assertThat(mapper.readTree(response.body()).get("title").asText())
+        assertThat(response.statusCode()).as("illegal transition returned: %s", response.body()).isEqualTo(409);
+        assertThat(mapper.readTree(response.body()).path("title").asText())
                 .contains("conflicts");
     }
 

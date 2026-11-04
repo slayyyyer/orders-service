@@ -19,8 +19,14 @@ record() { # record <label> <method> <path> [body] [extra-header]
   local response http_code start end duration
 
   local args=(-sS -X "$method" "$BASE_URL$path" -H 'Accept: application/json')
-  [ -n "$body" ] && args+=(-H 'Content-Type: application/json' --data-binary "$body")
-  [ -n "$extra" ] && args+=(-H "$extra")
+  # Plain `if`s, not `[ -n ... ] && ...`: under `set -e` a false test is a failing command
+  # and aborts the script, which is exactly what happened to the first bodiless GET.
+  if [ -n "$body" ]; then
+    args+=(-H 'Content-Type: application/json' --data-binary "$body")
+  fi
+  if [ -n "$extra" ]; then
+    args+=(-H "$extra")
+  fi
 
   start=$(date +%s%3N)
   response="$(curl "${args[@]}" -w $'\n%{http_code}')"

@@ -31,7 +31,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *
  * <p>Requires Docker; runs under {@code ./mvnw verify -Pit}.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {"server.error.include-message=always", "server.error.include-stacktrace=always"})
 @Testcontainers
 class OrdersApiIT {
 

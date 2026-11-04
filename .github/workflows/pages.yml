@@ -88,8 +88,17 @@ jobs:
 
       - name: Record REST and GraphQL request/response pairs
         run: |
-          mkdir -p dist/data
-          BASE_URL=http://localhost:8080 OUT=dist/data/recordings.json ./ci/record-api.sh
+          mkdir -p dist/data .work
+          status=0
+          BASE_URL=http://localhost:8080 OUT=dist/data/recordings.json ./ci/record-api.sh \
+            >.work/record.log 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -35 .work/record.log | while IFS= read -r line; do
+              printf '::error::record-api: %s\n' "$line"
+            done
+            exit "$status"
+          fi
+          tail -3 .work/record.log
 
       - name: Export OpenAPI document and GraphQL schema
         run: |

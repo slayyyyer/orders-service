@@ -52,6 +52,17 @@ jobs:
       # runner). JaCoCo enforces the coverage floor and writes target/site/jacoco.
       - name: Verify (unit + integration, coverage gate)
         run: ./mvnw -B verify -Pit
+      # A failed Maven step reports only "exit code 1", and CI logs are not readable without
+      # credentials. These annotations carry the actual assertions.
+      - name: Surface test failures as annotations
+        if: failure()
+        run: |
+          for f in target/failsafe-reports/*.txt target/surefire-reports/*.txt; do
+            [ -f "$f" ] || continue
+            grep -h -E "Tests run|<<< (FAILURE|ERROR)|expected:" "$f" | head -6 | while IFS= read -r line; do
+              printf '::error::%s: %s\n' "$(basename "$f")" "$line"
+            done
+          done
 
       - name: Package
         run: ./mvnw -B -q -DskipTests package

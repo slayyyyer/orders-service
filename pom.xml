@@ -24,6 +24,22 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
+  <dependencyManagement>
+    <dependencies>
+      <!-- The Boot 4.1 BOM manages org.testcontainers:testcontainers to 2.x while the
+           postgresql and junit-jupiter artifacts below are 1.21.x. That mix resolves and
+           compiles, then fails at runtime with NoSuchMethodError, so the whole
+           Testcontainers stack is pinned here to the 1.21.x line. -->
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>1.21.4</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>

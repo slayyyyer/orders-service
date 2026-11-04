@@ -59,7 +59,7 @@ jobs:
         run: |
           for f in target/failsafe-reports/*.txt target/surefire-reports/*.txt; do
             [ -f "$f" ] || continue
-            grep -h -E "Tests run|<<< (FAILURE|ERROR)|expected:|but was:|opentest4j|AssertionFailedError|Caused by|Exception|Error creating bean|SQL State:" "$f" | head -6 | while IFS= read -r line; do
+            grep -h -E "Tests run|<<< (FAILURE|ERROR)|expected:|but was:|opentest4j|AssertionFailedError|Caused by|Exception|Error creating bean|SQL State:" "$f" | head -24 | while IFS= read -r line; do
               printf '::error::%s: %s\n' "$(basename "$f")" "$line"
             done
           done

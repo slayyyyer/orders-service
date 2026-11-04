@@ -2,12 +2,12 @@ package io.slayyyyer.orders.web;
 
 import io.slayyyyer.orders.service.ConflictException;
 import io.slayyyyer.orders.service.NotFoundException;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.validation.FieldError;
@@ -22,14 +22,17 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
  *
  * <p>Spring raises two different exceptions for failed bean validation, and which one you
  * get depends on the controller signature: {@link MethodArgumentNotValidException} for a
- * {@code @Valid} argument, {@link HandlerMethodValidationException} when validation runs on
- * the method itself, and {@link ConstraintViolationException} from method-level constraints.
- * The framework's own documentation says applications should handle both of the first two.
- * Handling only one leaves the other falling through to Spring's default error page, which
- * is a different document shape — no type, no field map — so a client that reads problem
- * details cannot parse it.
+ * {@code @Valid} argument and {@link HandlerMethodValidationException} when validation runs
+ * on the method itself. The framework's own documentation says to handle both. Handling only
+ * one leaves the other falling through to another handler, which answers with a different
+ * document — no type, no field map — that a client reading problem details cannot parse.
+ *
+ * <p>The precedence matters: with {@code spring.mvc.problemdetails.enabled} on, Boot registers
+ * its own advice that also claims these exceptions, and it produced a bare
+ * "Invalid request content." instead of the documented shape.
  */
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class ApiExceptionHandler {
 
     private static final String BASE = "https://slayyyyer.github.io/orders-service/problems/";
@@ -75,17 +78,6 @@ public class ApiExceptionHandler {
         for (MessageSourceResolvable error : ex.getAllErrors()) {
             String field = error instanceof FieldError fieldError ? fieldError.getField() : "request";
             fields.putIfAbsent(field, error.getDefaultMessage());
-        }
-        return validationFailed(fields);
-    }
-
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ProblemDetail constraintValidation(ConstraintViolationException ex) {
-        Map<String, String> fields = new LinkedHashMap<>();
-        for (ConstraintViolation<?> violation : ex.getConstraintViolations()) {
-            String path = violation.getPropertyPath().toString();
-            String field = path.contains(".") ? path.substring(path.lastIndexOf('.') + 1) : path;
-            fields.putIfAbsent(field, violation.getMessage());
         }
         return validationFailed(fields);
     }

@@ -1,0 +1,85 @@
+"Money is always an integer number of minor units (cents), never a float."
+scalar Long
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  CANCELLED
+}
+
+type Customer {
+  id: ID!
+  email: String!
+  fullName: String!
+  createdAt: String!
+}
+
+type Product {
+  id: ID!
+  sku: String!
+  name: String!
+  unitPriceCents: Long!
+}
+
+type OrderLine {
+  productId: ID!
+  sku: String!
+  name: String!
+  quantity: Int!
+  unitPriceCents: Long!
+  lineTotalCents: Long!
+}
+
+type Order {
+  id: ID!
+  customerId: ID!
+  status: OrderStatus!
+  currency: String!
+  totalCents: Long!
+  createdAt: String!
+  items: [OrderLine!]!
+}
+
+"Page of orders for one customer. totalCount is the count before paging."
+type OrderConnection {
+  items: [Order!]!
+  page: Int!
+  size: Int!
+  totalCount: Long!
+  hasNextPage: Boolean!
+}
+
+type CreateOrderPayload {
+  order: Order!
+  "True when the idempotency key was already used and the original order is returned."
+  replayed: Boolean!
+}
+
+input OrderItemInput {
+  productId: ID!
+  quantity: Int!
+}
+
+input CreateOrderInput {
+  customerId: ID!
+  items: [OrderItemInput!]!
+  idempotencyKey: String!
+}
+
+type Query {
+  customer(id: ID!): Customer
+  order(id: ID!): Order
+  products(query: String, limit: Int = 20): [Product!]!
+  """
+  Orders for one customer, newest first, optionally filtered by status.
+  This is the non-trivial query: it joins line items and pages in SQL.
+  """
+  orders(customerId: ID!, status: OrderStatus, page: Int = 0, size: Int = 20): OrderConnection!
+}
+
+type Mutation {
+  createOrder(input: CreateOrderInput!): CreateOrderPayload!
+  "Transitions follow PENDING -> PAID -> SHIPPED, or PENDING -> CANCELLED."
+  changeOrderStatus(id: ID!, status: OrderStatus!): Order!
+}

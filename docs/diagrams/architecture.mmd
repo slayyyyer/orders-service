@@ -1,0 +1,39 @@
+%% Architecture for orders-service.
+%% Editable source; the README links here rather than embedding a stale PNG.
+flowchart TB
+  subgraph client["Clients"]
+    rest["REST client<br/>Idempotency-Key required"]
+    gql["GraphQL client<br/>/graphql"]
+  end
+
+  subgraph app["Spring Boot 4.1 / Java 21"]
+    direction TB
+    web["web.rest<br/>controllers + problem details"]
+    gqlc["graphql<br/>controllers + typed errors"]
+    svc["service<br/>OrderService, CustomerService, ProductService<br/>transactions, pricing, state machine"]
+    ports["repository<br/>ports (interfaces)"]
+    jdbc["repository.jdbc<br/>JdbcClient, explicit SQL"]
+  end
+
+  db[("Postgres 16<br/>customers, products, orders,<br/>order_items, outbox_events")]
+  flyway["Flyway migrations<br/>V1 schema, V2 deterministic seed"]
+
+  rest --> web
+  gql --> gqlc
+  web --> svc
+  gqlc --> svc
+  svc --> ports
+  ports --> jdbc
+  jdbc --> db
+  flyway --> db
+
+  subgraph ci["CI on GitHub Actions"]
+    tests["unit tests (29)"]
+    it["Testcontainers integration (7)"]
+    record["record-api.sh -> recordings.json"]
+    load["k6 -> summary.json"]
+    pages["static Pages site"]
+    tests --> it --> record --> load --> pages
+  end
+
+  ci -. "runs against a real Postgres" .-> db

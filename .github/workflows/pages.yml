@@ -1,0 +1,166 @@
+name: build-test-record
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Weekly, off the top of the hour to avoid the busiest scheduling minute.
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  POSTGRES_IMAGE: postgres:16-alpine
+  K6_VERSION: v2.3.0
+
+jobs:
+  build:
+    name: test, record, assemble
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orders
+          POSTGRES_USER: orders
+          POSTGRES_PASSWORD: orders
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orders"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Unit tests plus Testcontainers integration tests (Docker is available on the
+      # runner). JaCoCo enforces the coverage floor and writes target/site/jacoco.
+      - name: Verify (unit + integration, coverage gate)
+        run: ./mvnw -B verify -Pit
+
+      - name: Package
+        run: ./mvnw -B -q -DskipTests package
+
+      - name: Start the service against the Postgres service container
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/orders
+          DB_USER: orders
+          DB_PASSWORD: orders
+          SPRING_GRAPHQL_SCHEMA_PRINTER_ENABLED: "true"
+        run: |
+          mkdir -p .work
+          nohup java -jar target/orders-service-0.1.0.jar >.work/app.log 2>&1 &
+          echo $! >.work/app.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health/readiness >/dev/null; then
+              echo "service is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "service failed to start"; tail -50 .work/app.log; exit 1
+
+      - name: Record REST and GraphQL request/response pairs
+        run: |
+          mkdir -p dist/data
+          BASE_URL=http://localhost:8080 OUT=dist/data/recordings.json ./ci/record-api.sh
+
+      - name: Export OpenAPI document and GraphQL schema
+        run: |
+          curl -fsS http://localhost:8080/v3/api-docs -o dist/data/openapi.json
+          curl -fsS http://localhost:8080/graphql/schema -o dist/data/graphql-schema.graphqls
+
+      - name: Install k6
+        run: |
+          curl -fsSL "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz
+          sudo install -m 0755 "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+
+      - name: Load test (30s ramp, modest VUs)
+        env:
+          BASE_URL: http://localhost:8080
+          SUMMARY_PATH: dist/data/k6-summary.json
+        run: k6 run ci/k6/load.js
+
+      - name: Stop the service
+        if: always()
+        run: |
+          if [ -f .work/app.pid ]; then kill "$(cat .work/app.pid)" || true; fi
+
+      - name: Assemble the Pages site
+        run: |
+          mkdir -p dist/data
+          cp -r site/. dist/
+          touch dist/.nojekyll
+          mkdir -p dist/coverage
+          cp -r target/site/jacoco/. dist/coverage/
+
+          # Vendor Swagger UI at build time so the page has no runtime CDN dependency.
+          # If the download fails the OpenAPI document and the recorded explorer still work.
+          if curl -fsSL "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/swagger-ui-bundle.js" \
+              -o /tmp/swagger-ui-bundle.js; then
+            mkdir -p dist/swagger-ui
+            cp /tmp/swagger-ui-bundle.js dist/swagger-ui/
+            curl -fsSL "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/swagger-ui.css" \
+              -o dist/swagger-ui/swagger-ui.css
+            cat >dist/swagger-ui/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en"><head><meta charset="utf-8">
+          <title>OpenAPI — orders-service</title>
+          <link rel="stylesheet" href="swagger-ui.css"></head>
+          <body><div id="swagger-ui"></div>
+          <script src="swagger-ui-bundle.js"></script>
+          <script>
+            window.ui = SwaggerUIBundle({
+              url: "../data/openapi.json",
+              dom_id: "#swagger-ui",
+              supportedSubmitMethods: [],
+              deepLinking: true
+            });
+          </script></body></html>
+          HTML
+          else
+            mkdir -p dist/swagger-ui
+            echo '<!DOCTYPE html><meta charset="utf-8"><title>OpenAPI</title><p>Swagger UI was not vendored in this build. The generated document is at <a href="../data/openapi.json">data/openapi.json</a>.</p>' >dist/swagger-ui/index.html
+          fi
+
+          jq -n \
+            --arg commit "${GITHUB_SHA}" \
+            --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg runUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{commit: $commit, generatedAt: $generatedAt, runUrl: $runUrl}' >dist/data/manifest.js.tmp
+          printf 'window.LAB = %s;\n' "$(cat dist/data/manifest.js.tmp)" >dist/data/manifest.js
+          rm dist/data/manifest.js.tmp
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: deploy pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorded API explorer — orders-service</title>
+<meta name="description" content="Replay recorded REST and GraphQL request/response pairs captured from a CI run of the orders service.">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow"><a href="index.html">orders-service</a> · recorded output</p>
+    <h1>Recorded API explorer</h1>
+    <p class="lede">
+      A fixed script of REST and GraphQL calls, sent to a real instance during CI. Select a
+      call to see the exact request and the exact response bytes.
+    </p>
+    <p class="banner" role="note">
+      <strong>This is a recording.</strong> Editing a request here does not send it anywhere.
+      There is no server behind this page, which is why it cannot go down.
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <div class="explorer">
+      <ol id="call-list" class="call-list" aria-label="Recorded calls"></ol>
+      <div id="call-detail" class="call-detail">
+        <p class="loading">Loading recordings…</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Reproduce</h2>
+    <pre><code># the same script CI runs, against a fresh instance
+docker run --rm -d -p 5432:5432 -e POSTGRES_DB=orders -e POSTGRES_USER=orders \
+  -e POSTGRES_PASSWORD=orders postgres:16-alpine
+./mvnw spring-boot:run &
+BASE_URL=http://localhost:8080 ./ci/record-api.sh</code></pre>
+  </section>
+</main>
+
+<footer class="wrap footer">
+  <p id="build-stamp">Build stamp unavailable.</p>
+  <p><a href="index.html">Back to overview</a> · <a href="https://github.com/slayyyyer/orders-service">Source</a></p>
+</footer>
+
+<script src="data/manifest.js"></script>
+<script src="assets/explorer.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+name: keepalive
+
+# GitHub disables scheduled workflows on public repositories after 60 days without
+# activity. The weekly recording workflow is part of this repo's evidence, so keep the
+# schedule alive with a monthly no-op commit when the repository has been quiet.
+on:
+  schedule:
+    - cron: "41 5 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Touch the keepalive file if the repo has been quiet for 50+ days
+        run: |
+          last="$(git log -1 --format=%ct)"
+          now="$(date +%s)"
+          days=$(( (now - last) / 86400 ))
+          echo "days since last commit: $days"
+          if [ "$days" -lt 50 ]; then
+            echo "recent activity; nothing to do"
+            exit 0
+          fi
+          mkdir -p .github
+          date -u +%Y-%m-%dT%H:%M:%SZ >.github/keepalive.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive.txt
+          git commit -m "chore: keep the weekly schedule enabled"
+          git push

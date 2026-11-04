@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orders-service — REST + GraphQL over Postgres, recorded from CI</title>
+<meta name="description" content="Spring Boot orders API with REST and GraphQL over Postgres. Every response on this site was recorded from a CI run, not served by a live process.">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">slayyyyer · three-repo reference system</p>
+    <h1>orders-service</h1>
+    <p class="lede">
+      A Spring Boot 4 / Java 21 service with REST and GraphQL over the same domain,
+      Flyway migrations, an idempotent write path and a transactional outbox.
+    </p>
+    <p class="banner" role="note">
+      <strong>Recorded, not live.</strong> Each response below was captured from a single
+      CI run against a real Postgres and a real application process. Nothing is running now,
+      and this page never claims otherwise.
+    </p>
+    <nav class="jump" aria-label="Sections">
+      <a href="explorer.html">Recorded API explorer</a>
+      <a href="swagger-ui/index.html">OpenAPI reference</a>
+      <a href="coverage/index.html">Coverage report</a>
+      <a href="#load">Load test</a>
+      <a href="#shape">Error model</a>
+      <a href="https://github.com/slayyyyer/orders-service">Source</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>What was exercised</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Integration, not mocks</h3>
+        <p>Testcontainers starts Postgres 16, Flyway applies the real migrations, and the
+          tests drive the running server over HTTP — including the partial unique index
+          that makes idempotency safe.</p>
+      </div>
+      <div class="card">
+        <h3>One domain, two transports</h3>
+        <p>REST and GraphQL share services and repositories. Errors do not: REST returns
+          RFC 9457 problem details, GraphQL returns typed errors with a code.</p>
+      </div>
+      <div class="card">
+        <h3>Deterministic demo</h3>
+        <p>Seed data uses fixed UUIDs and prices, so the recordings below are reproducible
+          rather than incidental.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="load">
+    <h2>Load test</h2>
+    <p class="sub">
+      A short k6 run (30s ramp, 10 VUs peak) against the same running process. The point is
+      that the endpoints answer correctly under concurrency, not that the numbers are a benchmark.
+    </p>
+    <div id="load-body"><p class="loading">Loading k6 summary…</p></div>
+  </section>
+
+  <section id="shape">
+    <h2>Error model</h2>
+    <table class="table">
+      <thead><tr><th>Failure</th><th>REST</th><th>GraphQL</th></tr></thead>
+      <tbody>
+        <tr><td>Unknown customer or product</td><td>404, <code>type …/not-found</code>, <code>resource</code> and <code>id</code></td><td>error with <code>extensions.code = NOT_FOUND</code></td></tr>
+        <tr><td>Invalid body or field</td><td>400, <code>type …/validation-failed</code>, field map in <code>errors</code></td><td><code>extensions.code = INVALID_REQUEST</code></td></tr>
+        <tr><td>Illegal status transition</td><td>409, <code>type …/conflict</code></td><td><code>extensions.code = CONFLICT</code></td></tr>
+        <tr><td>Retried create with same key</td><td>200 with the original order and <code>Idempotent-Replay: true</code></td><td><code>replayed: true</code> on the payload</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Design decisions</h2>
+    <ul class="links">
+      <li><a href="https://github.com/slayyyyer/orders-service/blob/main/docs/adr/0001-jdbc-over-jpa.md">JDBC over JPA</a> — explicit SQL, no lazy-loading surprises, and it pairs with the migration lab.</li>
+      <li><a href="https://github.com/slayyyyer/orders-service/blob/main/docs/adr/0002-rest-and-graphql.md">REST and GraphQL together</a> — one service layer, two contracts, two error shapes.</li>
+      <li><a href="https://github.com/slayyyyer/orders-service/blob/main/docs/adr/0003-idempotent-orders.md">Idempotency keys</a> — a partial unique index, not an application-level lock.</li>
+      <li><a href="https://github.com/slayyyyer/orders-service/blob/main/docs/adr/0004-outbox.md">Transactional outbox</a> — the event commits with the order or not at all.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="wrap footer">
+  <p id="build-stamp">Build stamp unavailable.</p>
+  <p>
+    Part of a three-repo system:
+    <a href="https://slayyyyer.github.io/migration-lab/">migration-lab</a> ·
+    <a href="https://slayyyyer.github.io/gcp-reference-platform/">gcp-reference-platform</a> ·
+    <a href="https://github.com/slayyyyer/orders-service">source</a>
+  </p>
+</footer>
+
+<script src="data/manifest.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

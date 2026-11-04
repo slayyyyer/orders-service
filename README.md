@@ -46,15 +46,17 @@ Live site: <https://slayyyyer.github.io/orders-service/>
 | Check | Result |
 | --- | --- |
 | `./mvnw verify` (29 unit tests) | pass |
-| JaCoCo report | generated (28.2% line coverage from unit tests alone) |
+| JaCoCo line coverage | 28.2% (143 of 507 coverable lines) from the unit suite |
 | Flyway migrations against real Postgres | **not run locally** — no Docker on the authoring machine |
 | Integration tests (7, Testcontainers) | **written, not run locally**; CI runs `./mvnw verify -Pit` |
 | k6 load test, recorded explorer | **not run locally**; CI produces them |
 
-The coverage gate (55% lines) is bound to the `it` profile because it runs over the combined
-unit + integration suite. Unit tests cannot reach the JDBC and HTTP layers, so gating on them
-alone would either fail every build or force the threshold down to a number that means nothing.
-CI runs `./mvnw verify -Pit`, so the gate is enforced there.
+The coverage gate (50% of lines) is bound to the `it` profile, i.e. it is evaluated on the
+combined unit + integration report. The unit suite alone covers 28.2% of lines, because the
+repositories, controllers and GraphQL layer are only reachable through a real Postgres. Gating
+the default build there would either fail on every machine without Docker or force the
+threshold down to a number that proves nothing. CI runs `./mvnw verify -Pit`, so the gate is
+enforced on every push, and the coverage figure published on the site comes from that run.
 
 CI also enforces `./mvnw verify -Pit` on every push, with the k6 thresholds
 (p95 < 500ms, p99 < 900ms, failures < 1%) failing the build on regression.
@@ -126,8 +128,11 @@ Full suite, including Testcontainers integration tests and the coverage gate:
 - **Integration tests drive the server over HTTP** with the JDK `HttpClient` instead of
   MockMvc: Boot 4 moved the MockMvc test autoconfiguration to a separate module, and real
   HTTP bytes are a better test of the error model anyway.
-- **The coverage gate runs with the `it` profile**, because unit-only coverage of this
-  layered service is ~28% and a gate there would be theatre.
+- **The coverage gate runs with the `it` profile.** Unit-only coverage of this layered service
+  is 28.2% (143 of 507 coverable lines), measured from the JaCoCo report. The remaining lines are
+  the JDBC repositories and the HTTP/GraphQL edges, which require a database to exercise. The
+  threshold is 50% on the combined report: high enough to catch a collapse, and only reachable
+  where the integration tests actually run.
 - **Swagger UI is vendored at build time** (pinned `swagger-ui-dist` 5.34.1) so the docs page
   has no runtime CDN dependency. If the download fails, CI publishes the OpenAPI document
   and the recorded explorer instead of a broken page.

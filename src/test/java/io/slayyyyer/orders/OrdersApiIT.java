@@ -141,11 +141,16 @@ class OrdersApiIT {
 
         HttpResponse<String> response = post("/api/orders", body, "it-invalid-0001");
 
-        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.statusCode())
+                .as("validation response body: %s", response.body())
+                .isEqualTo(400);
         JsonNode problem = mapper.readTree(response.body());
-        assertThat(problem.get("type").asText())
+        assertThat(problem.path("type").asText())
+                .as("validation response body: %s", response.body())
                 .isEqualTo("https://slayyyyer.github.io/orders-service/problems/validation-failed");
-        assertThat(problem.at("/errors/items").isMissingNode()).isFalse();
+        assertThat(problem.at("/errors/items").isMissingNode())
+                .as("validation response body: %s", response.body())
+                .isFalse();
     }
 
     @Test
